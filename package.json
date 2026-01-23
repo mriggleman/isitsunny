@@ -1,11 +1,13 @@
 {
-  "name": "is-ireland-sunny",
+  "name": "isitsunny",
   "version": "1.0.0",
-  "type": "module",
+  "description": "Find sunny weather anywhere in Ireland",
+  "homepage": "https://mriggleman.github.io/isitsunny",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "deploy": "vite build && gh-pages -d dist"
   },
   "dependencies": {
     "react": "^18.2.0",
@@ -14,9 +16,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.0.0",
-    "autoprefixer": "^10.4.14",
-    "postcss": "^8.4.24",
-    "tailwindcss": "^3.3.2",
-    "vite": "^4.3.9"
+    "vite": "^4.3.9",
+    "gh-pages": "^5.0.0"
   }
 }
