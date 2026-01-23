@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Sun, Cloud, CloudRain, MapPin, Star, Loader2, AlertTriangle, Info } from 'lucide-react';
+import { Sun, Cloud, CloudRain, MapPin, Star, Loader2 } from 'lucide-react';
 
 const COOL_PLACES = [
   { name: 'Dublin', lat: 53.3498, lon: -6.2603 },
@@ -61,8 +61,6 @@ const App = () => {
   const [sortByRecommended, setSortByRecommended] = useState(false);
   const [userLocation, setUserLocation] = useState(null);
   const [dates, setDates] = useState([]);
-  const [warnings, setWarnings] = useState(null);
-  const [showWarnings, setShowWarnings] = useState(false);
 
   useEffect(() => {
     const today = new Date();
@@ -93,48 +91,7 @@ const App = () => {
     } else {
       setUserLocation({ lat: 53.2026, lon: -6.0983 });
     }
-
-    fetchWeatherWarnings();
   }, []);
-
-  const fetchWeatherWarnings = async () => {
-    try {
-      const response = await fetch('https://www.met.ie/Open_Data/xml/xWarningPage.xml');
-      const text = await response.text();
-      const parser = new DOMParser();
-      const xml = parser.parseFromString(text, 'text/xml');
-      
-      const awarenessLevel = xml.querySelector('globalAwarenessLevel');
-      const warningTypes = xml.querySelectorAll('warningType');
-      
-      const warningsList = [];
-      warningTypes.forEach(warnType => {
-        const header = warnType.querySelector('header')?.textContent;
-        const warnText = warnType.querySelector('warnText')?.textContent;
-        const validFrom = warnType.querySelector('validFromTime')?.textContent;
-        const validTo = warnType.querySelector('validToTime')?.textContent;
-        
-        if (header && warnText) {
-          warningsList.push({
-            header,
-            text: warnText,
-            validFrom,
-            validTo
-          });
-        }
-      });
-
-      if (warningsList.length > 0 || (awarenessLevel && awarenessLevel.querySelector('text')?.textContent !== 'Green')) {
-        setWarnings({
-          level: awarenessLevel?.querySelector('text')?.textContent || 'Green',
-          color: awarenessLevel?.querySelector('colourcode')?.textContent || '#00FF00',
-          warnings: warningsList
-        });
-      }
-    } catch (error) {
-      console.error('Error fetching warnings:', error);
-    }
-  };
 
   const getWeatherSymbol = (symbol) => {
     if (!symbol) return { icon: Cloud, text: 'Cloudy', sunny: false };
@@ -247,25 +204,6 @@ const App = () => {
     }
   };
 
-  const getWarningIcon = (level) => {
-    if (level === 'Red' || level === 'Orange') return AlertTriangle;
-    return Info;
-  };
-
-  const getWarningBgColor = (level) => {
-    if (level === 'Red') return 'bg-red-100 border-red-300';
-    if (level === 'Orange') return 'bg-orange-100 border-orange-300';
-    if (level === 'Yellow') return 'bg-yellow-100 border-yellow-300';
-    return 'bg-blue-100 border-blue-300';
-  };
-
-  const getWarningTextColor = (level) => {
-    if (level === 'Red') return 'text-red-900';
-    if (level === 'Orange') return 'text-orange-900';
-    if (level === 'Yellow') return 'text-yellow-900';
-    return 'text-blue-900';
-  };
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-blue-100 p-4">
       <div className="max-w-4xl mx-auto">
@@ -275,50 +213,6 @@ const App = () => {
           </h1>
           <p className="text-blue-700">Find out where the sun is shining across Ireland</p>
         </div>
-
-        {warnings && warnings.warnings.length > 0 && (
-          <div className={`mb-6 rounded-2xl shadow-lg border-2 overflow-hidden ${getWarningBgColor(warnings.level)}`}>
-            <button
-              onClick={() => setShowWarnings(!showWarnings)}
-              className="w-full p-4 flex items-center justify-between hover:opacity-80 transition-opacity"
-            >
-              <div className="flex items-center gap-3">
-                {React.createElement(getWarningIcon(warnings.level), {
-                  className: getWarningTextColor(warnings.level),
-                  size: 24
-                })}
-                <div className="text-left">
-                  <p className={`font-bold ${getWarningTextColor(warnings.level)}`}>
-                    {warnings.level} Weather Warning Active
-                  </p>
-                  <p className={`text-sm ${getWarningTextColor(warnings.level)} opacity-75`}>
-                    {warnings.warnings.length} warning{warnings.warnings.length !== 1 ? 's' : ''} in effect
-                  </p>
-                </div>
-              </div>
-              <span className={`text-sm ${getWarningTextColor(warnings.level)}`}>
-                {showWarnings ? 'Hide' : 'Show'} details
-              </span>
-            </button>
-            
-            {showWarnings && (
-              <div className="px-4 pb-4 space-y-3">
-                {warnings.warnings.map((warning, idx) => (
-                  <div key={idx} className="bg-white rounded-lg p-3 shadow-sm">
-                    <p className="font-semibold text-gray-900 mb-1">{warning.header}</p>
-                    <p className="text-sm text-gray-700">{warning.text}</p>
-                    {warning.validFrom && warning.validTo && (
-                      <p className="text-xs text-gray-500 mt-2">
-                        Valid: {new Date(warning.validFrom).toLocaleString('en-IE')} to{' '}
-                        {new Date(warning.validTo).toLocaleString('en-IE')}
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
 
         <div className="bg-white rounded-2xl shadow-xl p-6 mb-6">
           <div className="space-y-4">
@@ -428,10 +322,7 @@ const App = () => {
         )}
 
         <div className="mt-6 text-center text-sm text-gray-600">
-          <p>Weather data from Met Éireann</p>
-          <p className="text-xs mt-1">
-            © Met Éireann · <a href="https://www.met.ie" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">met.ie</a>
-          </p>
+          <p>Data from Met Éireann Open Data API</p>
         </div>
       </div>
     </div>
