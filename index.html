@@ -233,8 +233,8 @@
         const result = {};
         Object.keys(dailyForecasts).forEach(date => {
           const codes = dailyForecasts[date];
-          const sunnyPeriods = codes.filter(c => c <= 3).length;
-          result[date] = sunnyPeriods >= codes.length * 0.5;
+          const sunnyPeriods = codes.filter(c => c <= 4).length;
+          result[date] = sunnyPeriods >= codes.length * 0.33;
         });
 
         return result;
