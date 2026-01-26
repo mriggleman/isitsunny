@@ -1,3 +1,7 @@
+export const config = {
+  runtime: 'nodejs18.x'
+};
+
 export default async function handler(req, res) {
   const { lat, lon } = req.query;
 
@@ -10,23 +14,23 @@ export default async function handler(req, res) {
   try {
     const response = await fetch(url, {
       headers: {
-        // Some Met Éireann endpoints are picky
-        'User-Agent': 'is-it-sunny-in-ireland/1.0'
+        'User-Agent': 'isitsunny/1.0'
       }
     });
 
     if (!response.ok) {
-      return res.status(response.status).send(await response.text());
+      const text = await response.text();
+      return res.status(response.status).send(text);
     }
 
-    const data = await response.text();
+    const xml = await response.text();
 
-    // CORS headers (important!)
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET');
+    res.setHeader('Cache-Control', 's-maxage=10800');
 
-    res.status(200).send(data);
+    res.status(200).send(xml);
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: 'Failed to fetch Met Éireann data' });
   }
 }
