@@ -257,51 +257,44 @@
         }));
       };
 
-      const fetchWeatherForLocation = async (location) => {
-        const cached = getCachedForecast(location);
-        if (cached) return cached;
+  const fetchWeatherForLocation = async (location) => {
+    const cached = getCachedForecast(location);
+      if (cached) return cached;
 
-       
+    try {
       const url = `/api/met?lat=${location.lat}&lon=${location.lon}`;
-
-        const response = await fetch(url);
-        if (!response.ok) throw new Error('Proxy fetch failed');
-
-      const xmlText = await response.text();
-
-
-        for (const url of urls) {
-          try {
-            const response = await fetch(url);
-            if (!response.ok) {
-              continue; // Try next URL
-            }
-
-            const xmlText = await response.text();
-            const parser = new DOMParser();
-            const xmlDoc = parser.parseFromString(xmlText, 'text/xml');
-
-            // Check for XML parsing errors
-            const parserError = xmlDoc.querySelector('parsererror');
-            if (parserError) {
-              console.error('XML parsing error:', parserError.textContent);
-              continue;
-            }
-
-            const forecast = parseMetEireannForecast(xmlDoc);
-            if (forecast && Object.keys(forecast).length > 0) {
-              cacheForecast(location, forecast);
-              return forecast;
-            }
-          } catch (error) {
-            console.error(`Fetch attempt failed for ${location.name}:`, error);
-            continue;
-          }
+    
+      const response = await fetch(url);
+    
+      if (!response.ok) {
+          const errorText = await response.text();
+          console.error(`Proxy error for ${location.name}:`, errorText);
+          return null;
         }
 
-        console.error(`All fetch attempts failed for ${location.name}`);
-        return null;
-      };
+    const xmlText = await response.text();
+    const parser = new DOMParser();
+    const xmlDoc = parser.parseFromString(xmlText, 'text/xml');
+
+    // Check for XML parsing errors
+    const parserError = xmlDoc.querySelector('parsererror');
+    if (parserError) {
+      console.error('XML parsing error:', parserError.textContent);
+      return null;
+    }
+
+    const forecast = parseMetEireannForecast(xmlDoc);
+    if (forecast && Object.keys(forecast).length > 0) {
+      cacheForecast(location, forecast);
+      return forecast;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error(`Fetch failed for ${location.name}:`, error);
+    return null;
+  }
+};
 
       const parseMetEireannForecast = (xmlDoc) => {
         const times = Array.from(xmlDoc.querySelectorAll('time'));
