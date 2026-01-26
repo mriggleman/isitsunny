@@ -2,6 +2,7 @@ export const config = {
   runtime: 'nodejs18.x'
 };
 
+ // just ignore my emotional support comments 
 export default async function handler(req, res) {
   const { lat, lon } = req.query;
 
