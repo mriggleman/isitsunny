@@ -519,4 +519,44 @@
                   {sunnyLocations.map((location, i) => (
                     <div key={i} className="flex items-center justify-between p-4 bg-gradient-to-r from-yellow-50 to-orange-50 rounded-lg hover:shadow-md transition-all border border-yellow-200">
                       <div className="flex items-center gap-3 flex-1">
-                        <MapPin className
+                        <MapPin className="text-blue-500 flex-shrink-0" size={20} />
+                        <div>
+                          <span className="font-medium text-gray-800 block">{location.name}</span>
+                          <span className="text-xs text-gray-600 capitalize">{location.label}</span>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-sm text-gray-600 block">{location.distance} km</span>
+                        <span className="text-xs text-green-600 font-semibold">{location.confidence}%</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="mt-8 text-center text-sm text-gray-600 bg-white rounded-lg p-4 shadow">
+              <div className="flex items-center justify-center gap-2 mb-2">
+                <Info size={16} />
+                <span className="font-semibold">Weather Data</span>
+              </div>
+              <p>
+                Forecast data provided by <a href="https://www.met.ie" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-medium">Met Éireann</a>, the Irish National Meteorological Service
+              </p>
+              <p className="text-xs mt-1 text-gray-500">
+                Data cached for 3 hours per location
+              </p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(
+      <React.StrictMode>
+        <IsSunnyInIreland />
+      </React.StrictMode>
+    );
+  </script>
+</body>
+</html>
