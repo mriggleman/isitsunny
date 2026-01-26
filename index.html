@@ -233,58 +233,87 @@
       };
 
       const fetchWeatherForLocation = async (location) => {
-        const cached = getCachedForecast(location);
-        if (cached) {
-          return cached;
+      const cached = getCachedForecast(location);
+      if (cached) return cached;
+
+      const url = `https://openaccess.pf.api.met.ie/metno-wdb2ts/locationforecast?lat=${location.lat};long=${location.lon}`;
+
+      try {
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
         }
 
-        try {
-          const response = await fetch(
-            `http://openaccess.pf.api.met.ie/metno-wdb2ts/locationforecast?lat=${location.lat};long=${location.lon}`
-          );
-          
-          if (!response.ok) throw new Error('API request failed');
-          
-          const xmlText = await response.text();
-          const parser = new DOMParser();
-          const xmlDoc = parser.parseFromString(xmlText, 'text/xml');
-          
-          const forecast = parseMetEireannForecast(xmlDoc);
-          cacheForecast(location, forecast);
-          
-          return forecast;
-        } catch (error) {
-          console.error(`Error fetching weather for ${location.name}:`, error);
-          return null;
-        }
-      };
+        const xmlText = await response.text();
+        const parser = new DOMParser();
+        const xmlDoc = parser.parseFromString(xmlText, 'text/xml');
+
+        const forecast = parseMetEireannForecast(xmlDoc);
+        cacheForecast(location, forecast);
+
+        return forecast;
+      } catch (error) {
+        console.error(`Weather fetch failed for ${location.name}`, error);
+        return null;
+      }
+    };
 
       const parseMetEireannForecast = (xmlDoc) => {
-        const times = xmlDoc.querySelectorAll('time');
-        const dailyForecasts = {};
+      const times = Array.from(xmlDoc.querySelectorAll('time'));
+      const dailyBuckets = {};
 
-        times.forEach(time => {
-          const from = time.getAttribute('from');
-          const date = from.split('T')[0];
-          
-          const symbol = time.querySelector('symbol');
-          const symbolCode = symbol?.getAttribute('number') || '4';
-          
-          if (!dailyForecasts[date]) {
-            dailyForecasts[date] = [];
-          }
-          dailyForecasts[date].push(parseInt(symbolCode));
-        });
+        for (const time of times) {
+      const from = time.getAttribute('from');
+        if (!from || !isDaytime(from)) continue;
 
-        const result = {};
-        Object.keys(dailyForecasts).forEach(date => {
-          const codes = dailyForecasts[date];
-          const SUNNY_CODES = new Set([1, 2, 3, 4]); // sunny, sunny spells, partly cloudy
-          result[date] = codes.some(c => SUNNY_CODES.has(c));
-        });
+      const date = from.split('T')[0];
 
-        return result;
-      };
+      const symbol = time.querySelector('symbol');
+      const symbolCode =
+        symbol?.getAttribute('symbolCode') ||
+        symbol?.getAttribute('number');
+
+      if (!symbolCode) continue;
+
+      if (!dailyBuckets[date]) {
+        dailyBuckets[date] = {
+          total: 0,
+          sunny: 0,
+          partly: 0
+          };
+        }
+
+        dailyBuckets[date].total++;
+
+      if (SUNNY_SYMBOLS.has(symbolCode)) {
+          dailyBuckets[date].sunny++;
+      } else if (PARTLY_SUNNY_SYMBOLS.has(symbolCode)) {
+          dailyBuckets[date].partly++;
+        }
+      }
+
+      const result = {};
+
+      for (const [date, stats] of Object.entries(dailyBuckets)) {
+      const { total, sunny, partly } = stats;
+        if (total === 0) continue;
+
+        const score = (sunny + partly * 0.6) / total;
+        const confidence = Math.round(score * 100);
+
+        let label = 'unlikely';
+        if (confidence >= 70) label = 'sunny';
+        else if (confidence >= 40) label = 'probably sunny';
+
+          result[date] = {
+            confidence,
+            label,
+            breakdown: stats
+          };
+        }
+
+      return result;
+    };
 
       const calculateDistance = (lat1, lon1, lat2, lon2) => {
         const R = 6371;
@@ -313,9 +342,9 @@
           
           const forecast = await fetchWeatherForLocation(location);
           
-          if (forecast && forecast[dateStr]) {
-            const distance = calculateDistance(userLocation.lat, userLocation.lon, location.lat, location.lon);
-            sunny.push({ ...location, distance: Math.round(distance) });
+        if (forecast && forecast[dateStr]) {
+          const distance = calculateDistance(...);
+            sunny.push({ ...location, distance });
           }
         }
 
