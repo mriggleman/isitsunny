@@ -169,8 +169,23 @@
       </svg>
     );
 
+    // Met Éireann weather symbol codes
+    const SUNNY_SYMBOLS = new Set([
+      '1', 'Sun', 'clearsky_day', 'fair_day'
+    ]);
+
+    const PARTLY_SUNNY_SYMBOLS = new Set([
+      '2', '3', 'partlycloud_day', 'partlycloudy_day', 'cloudy'
+    ]);
+
     const FEATURES = {
       WEATHER_WARNINGS: false
+    };
+
+    // Check if time is during daylight hours (6am-9pm)
+    const isDaytime = (timeStr) => {
+      const hour = new Date(timeStr).getHours();
+      return hour >= 6 && hour <= 21;
     };
 
     function IsSunnyInIreland() {
@@ -180,6 +195,8 @@
       const [userLocation, setUserLocation] = useState(null);
       const [weatherWarnings, setWeatherWarnings] = useState([]);
       const [showWarnings, setShowWarnings] = useState(false);
+      const [weatherCache, setWeatherCache] = useState({});
+      const [error, setError] = useState(null);
 
       useEffect(() => {
         if (navigator.geolocation) {
@@ -201,7 +218,7 @@
 
         if (FEATURES.WEATHER_WARNINGS) {
           fetchWeatherWarnings();
-          }
+        }
       }, []);
 
       const fetchWeatherWarnings = async () => {
@@ -218,13 +235,12 @@
 
       const getCachedForecast = (location) => {
         const cacheKey = `weather_${location.lat}_${location.lon}`;
-        const cached = localStorage.getItem(cacheKey);
+        const cached = weatherCache[cacheKey];
         
         if (cached) {
-          const data = JSON.parse(cached);
-          const cacheAge = Date.now() - data.timestamp;
-          if (cacheAge < 10800000) {
-            return data.forecast;
+          const cacheAge = Date.now() - cached.timestamp;
+          if (cacheAge < 10800000) { // 3 hours
+            return cached.forecast;
           }
         }
         return null;
@@ -232,84 +248,102 @@
 
       const cacheForecast = (location, forecast) => {
         const cacheKey = `weather_${location.lat}_${location.lon}`;
-        localStorage.setItem(cacheKey, JSON.stringify({
-          timestamp: Date.now(),
-          forecast: forecast
+        setWeatherCache(prev => ({
+          ...prev,
+          [cacheKey]: {
+            timestamp: Date.now(),
+            forecast: forecast
+          }
         }));
       };
 
       const fetchWeatherForLocation = async (location) => {
-      const cached = getCachedForecast(location);
-      if (cached) return cached;
+        const cached = getCachedForecast(location);
+        if (cached) return cached;
 
-      const url = `https://openaccess.pf.api.met.ie/metno-wdb2ts/locationforecast?lat=${location.lat};long=${location.lon}`;
+        // Try direct connection first, fallback to CORS proxy
+        const urls = [
+          `https://openaccess.pf.api.met.ie/metno-wdb2ts/locationforecast?lat=${location.lat};long=${location.lon}`,
+          `https://cors-anywhere.herokuapp.com/https://openaccess.pf.api.met.ie/metno-wdb2ts/locationforecast?lat=${location.lat};long=${location.lon}`
+        ];
 
-      try {
-        const response = await fetch(url);
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
+        for (const url of urls) {
+          try {
+            const response = await fetch(url);
+            if (!response.ok) {
+              continue; // Try next URL
+            }
+
+            const xmlText = await response.text();
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString(xmlText, 'text/xml');
+
+            // Check for XML parsing errors
+            const parserError = xmlDoc.querySelector('parsererror');
+            if (parserError) {
+              console.error('XML parsing error:', parserError.textContent);
+              continue;
+            }
+
+            const forecast = parseMetEireannForecast(xmlDoc);
+            if (forecast && Object.keys(forecast).length > 0) {
+              cacheForecast(location, forecast);
+              return forecast;
+            }
+          } catch (error) {
+            console.error(`Fetch attempt failed for ${location.name}:`, error);
+            continue;
+          }
         }
 
-        const xmlText = await response.text();
-        const parser = new DOMParser();
-        const xmlDoc = parser.parseFromString(xmlText, 'text/xml');
-
-        const forecast = parseMetEireannForecast(xmlDoc);
-        cacheForecast(location, forecast);
-
-        return forecast;
-      } catch (error) {
-        console.error(`Weather fetch failed for ${location.name}`, error);
+        console.error(`All fetch attempts failed for ${location.name}`);
         return null;
-      }
-    };
+      };
 
       const parseMetEireannForecast = (xmlDoc) => {
-      const times = Array.from(xmlDoc.querySelectorAll('time'));
-      const dailyBuckets = {};
+        const times = Array.from(xmlDoc.querySelectorAll('time'));
+        const dailyBuckets = {};
 
         for (const time of times) {
-      const from = time.getAttribute('from');
-        if (!from || !isDaytime(from)) continue;
+          const from = time.getAttribute('from');
+          if (!from || !isDaytime(from)) continue;
 
-      const date = from.split('T')[0];
+          const date = from.split('T')[0];
 
-      const symbol = time.querySelector('symbol');
-      const symbolCode =
-        symbol?.getAttribute('symbolCode') ||
-        symbol?.getAttribute('number');
+          const symbol = time.querySelector('symbol');
+          const symbolCode = symbol?.getAttribute('symbolCode') || symbol?.getAttribute('number');
 
-      if (!symbolCode) continue;
+          if (!symbolCode) continue;
 
-      if (!dailyBuckets[date]) {
-        dailyBuckets[date] = {
-          total: 0,
-          sunny: 0,
-          partly: 0
-          };
+          if (!dailyBuckets[date]) {
+            dailyBuckets[date] = {
+              total: 0,
+              sunny: 0,
+              partly: 0
+            };
+          }
+
+          dailyBuckets[date].total++;
+
+          if (SUNNY_SYMBOLS.has(symbolCode)) {
+            dailyBuckets[date].sunny++;
+          } else if (PARTLY_SUNNY_SYMBOLS.has(symbolCode)) {
+            dailyBuckets[date].partly++;
+          }
         }
 
-        dailyBuckets[date].total++;
+        const result = {};
 
-      if (SUNNY_SYMBOLS.has(symbolCode)) {
-          dailyBuckets[date].sunny++;
-      } else if (PARTLY_SUNNY_SYMBOLS.has(symbolCode)) {
-          dailyBuckets[date].partly++;
-        }
-      }
+        for (const [date, stats] of Object.entries(dailyBuckets)) {
+          const { total, sunny, partly } = stats;
+          if (total === 0) continue;
 
-      const result = {};
+          const score = (sunny + partly * 0.6) / total;
+          const confidence = Math.round(score * 100);
 
-      for (const [date, stats] of Object.entries(dailyBuckets)) {
-      const { total, sunny, partly } = stats;
-        if (total === 0) continue;
-
-        const score = (sunny + partly * 0.6) / total;
-        const confidence = Math.round(score * 100);
-
-        let label = 'unlikely';
-        if (confidence >= 70) label = 'sunny';
-        else if (confidence >= 40) label = 'probably sunny';
+          let label = 'unlikely';
+          if (confidence >= 70) label = 'sunny';
+          else if (confidence >= 40) label = 'probably sunny';
 
           result[date] = {
             confidence,
@@ -318,8 +352,8 @@
           };
         }
 
-      return result;
-    };
+        return result;
+      };
 
       const calculateDistance = (lat1, lon1, lat2, lon2) => {
         const R = 6371;
@@ -335,37 +369,46 @@
 
         setLoading(true);
         setSunnyLocations([]);
+        setError(null);
 
         const dateStr = selectedDate.toISOString().split('T')[0];
         const sunny = [];
+        let successCount = 0;
 
         for (let i = 0; i < IRISH_LOCATIONS.length; i++) {
           const location = IRISH_LOCATIONS[i];
           
           if (!getCachedForecast(location) && i > 0) {
-            await new Promise(resolve => setTimeout(resolve, 100));
+            await new Promise(resolve => setTimeout(resolve, 150));
           }
           
           const forecast = await fetchWeatherForLocation(location);
           
-          const day = forecast?.[dateStr];
+          if (forecast) {
+            successCount++;
+            const day = forecast[dateStr];
 
-          if (day && day.confidence >= 40) {
-            const distance = calculateDistance(
-              userLocation.lat,
-              userLocation.lon,
-              location.lat,
-              location.lon
-            );
+            if (day && day.confidence >= 40) {
+              const distance = calculateDistance(
+                userLocation.lat,
+                userLocation.lon,
+                location.lat,
+                location.lon
+              );
 
-          sunny.push({
-            ...location,
-            distance: Math.round(distance),
-            confidence: day.confidence,
-            label: day.label
-          });
+              sunny.push({
+                ...location,
+                distance: Math.round(distance),
+                confidence: day.confidence,
+                label: day.label
+              });
+            }
+          }
         }
-      }
+
+        if (successCount === 0) {
+          setError('Unable to fetch weather data. The Met Éireann API may be temporarily unavailable.');
+        }
 
         sunny.sort((a, b) => a.distance - b.distance);
         setSunnyLocations(sunny);
@@ -443,10 +486,22 @@
               <div className="bg-white rounded-xl shadow-lg p-12 text-center">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
                 <p className="text-gray-600">Checking weather across Ireland...</p>
+                <p className="text-sm text-gray-500 mt-2">This may take a minute</p>
               </div>
             )}
 
-            {!loading && sunnyLocations.length === 0 && selectedDate && (
+            {error && (
+              <div className="bg-red-50 border border-red-200 rounded-xl shadow-lg p-6 mb-6">
+                <div className="flex items-center gap-2 text-red-800 mb-2">
+                  <AlertTriangle size={20} />
+                  <span className="font-semibold">Error</span>
+                </div>
+                <p className="text-red-700">{error}</p>
+                <p className="text-sm text-red-600 mt-2">Please try again later or check the Met Éireann website directly.</p>
+              </div>
+            )}
+
+            {!loading && !error && sunnyLocations.length === 0 && selectedDate && (
               <div className="bg-white rounded-xl shadow-lg p-12 text-center">
                 <Cloud size={64} className="mx-auto mb-4 text-gray-400" />
                 <h3 className="text-2xl font-bold text-gray-700 mb-2">No sunshine found</h3>
@@ -462,40 +517,6 @@
                 </h3>
                 <div className="space-y-2 max-h-96 overflow-y-auto">
                   {sunnyLocations.map((location, i) => (
-                    <div key={i} className="flex items-center justify-between p-3 bg-yellow-50 rounded-lg hover:bg-yellow-100 transition-colors">
-                      <div className="flex items-center gap-3">
-                        <MapPin className="text-blue-500" size={20} />
-                        <span className="font-medium text-gray-800">{location.name}</span>
-                      </div>
-                      <span className="text-sm text-gray-600">{location.distance} km away</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div className="mt-8 text-center text-sm text-gray-600 bg-white rounded-lg p-4 shadow">
-              <div className="flex items-center justify-center gap-2 mb-2">
-                <Info size={16} />
-                <span className="font-semibold">Weather Data</span>
-              </div>
-              <p>
-                Forecast data provided by <a href="https://www.met.ie" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-medium">Met Éireann</a>, the Irish National Meteorological Service
-              </p>
-              <p className="text-xs mt-1 text-gray-500">
-                Data cached for 3 hours per location
-              </p>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    ReactDOM.createRoot(document.getElementById('root')).render(
-      <React.StrictMode>
-        <IsSunnyInIreland />
-      </React.StrictMode>
-    );
-  </script>
-</body>
-</html>
+                    <div key={i} className="flex items-center justify-between p-4 bg-gradient-to-r from-yellow-50 to-orange-50 rounded-lg hover:shadow-md transition-all border border-yellow-200">
+                      <div className="flex items-center gap-3 flex-1">
+                        <MapPin className
