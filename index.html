@@ -342,11 +342,24 @@
           
           const forecast = await fetchWeatherForLocation(location);
           
-        if (forecast && forecast[dateStr]) {
-          const distance = calculateDistance(...);
-            sunny.push({ ...location, distance });
-          }
+          const day = forecast?.[dateStr];
+
+          if (day && day.confidence >= 40) {
+            const distance = calculateDistance(
+              userLocation.lat,
+              userLocation.lon,
+              location.lat,
+              location.lon
+            );
+
+          sunny.push({
+            ...location,
+            distance: Math.round(distance),
+            confidence: day.confidence,
+            label: day.label
+          });
         }
+      }
 
         sunny.sort((a, b) => a.distance - b.distance);
         setSunnyLocations(sunny);
