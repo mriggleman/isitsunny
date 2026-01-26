@@ -171,12 +171,15 @@
 
     // Met Éireann weather symbol codes
     const SUNNY_SYMBOLS = new Set([
-      '1', 'Sun', 'clearsky_day', 'fair_day'
+      '1', '2',
+      'Sun', 'clearsky_day', 'fair_day', 'partlycloud_day'
     ]);
 
     const PARTLY_SUNNY_SYMBOLS = new Set([
-      '2', '3', 'partlycloud_day', 'partlycloudy_day', 'cloudy'
+      '3', '4',
+      'partlycloudy_day', 'cloudy', 'Cloudy'
     ]);
+
 
     const FEATURES = {
       WEATHER_WARNINGS: false
@@ -257,26 +260,32 @@
         }));
       };
 
-  const fetchWeatherForLocation = async (location) => {
-    const cached = getCachedForecast(location);
-      if (cached) return cached;
+ const fetchWeatherForLocation = async (location) => {
+  const cached = getCachedForecast(location);
+  if (cached) return cached;
 
-    try {
-      const url = `/api/met?lat=${location.lat}&lon=${location.lon}`;
+  try {
+    const url = `/api/met?lat=${location.lat}&lon=${location.lon}`;
+    console.log(`Fetching weather for ${location.name}`);
     
-      const response = await fetch(url);
+    const response = await fetch(url);
     
-      if (!response.ok) {
-          const errorText = await response.text();
-          console.error(`Proxy error for ${location.name}:`, errorText);
-          return null;
-        }
+    if (!response.ok) {
+      console.error(`HTTP ${response.status} for ${location.name}`);
+      return null;
+    }
 
     const xmlText = await response.text();
+    
+    // Validate we got XML
+    if (!xmlText.includes('<?xml') && !xmlText.includes('<weatherdata')) {
+      console.error(`Invalid response for ${location.name}`);
+      return null;
+    }
+
     const parser = new DOMParser();
     const xmlDoc = parser.parseFromString(xmlText, 'text/xml');
 
-    // Check for XML parsing errors
     const parserError = xmlDoc.querySelector('parsererror');
     if (parserError) {
       console.error('XML parsing error:', parserError.textContent);
@@ -291,65 +300,80 @@
     
     return null;
   } catch (error) {
-    console.error(`Fetch failed for ${location.name}:`, error);
+    console.error(`Error fetching ${location.name}:`, error);
     return null;
   }
 };
 
-      const parseMetEireannForecast = (xmlDoc) => {
-        const times = Array.from(xmlDoc.querySelectorAll('time'));
-        const dailyBuckets = {};
 
-        for (const time of times) {
-          const from = time.getAttribute('from');
-          if (!from || !isDaytime(from)) continue;
+const parseMetEireannForecast = (xmlDoc) => {
+  const times = Array.from(xmlDoc.querySelectorAll('time'));
+  const dailyBuckets = {};
 
-          const date = from.split('T')[0];
+  for (const time of times) {
+    const from = time.getAttribute('from');
+    if (!from || !isDaytime(from)) continue;
 
-          const symbol = time.querySelector('symbol');
-          const symbolCode = symbol?.getAttribute('symbolCode') || symbol?.getAttribute('number');
+    const date = from.split('T')[0];
+    const symbol = time.querySelector('symbol');
+    
+    if (!symbol) continue;
 
-          if (!symbolCode) continue;
+    const symbolId = symbol.getAttribute('id');
+    const symbolNumber = symbol.getAttribute('number');
+    const symbolCode = symbolId || symbolNumber;
 
-          if (!dailyBuckets[date]) {
-            dailyBuckets[date] = {
-              total: 0,
-              sunny: 0,
-              partly: 0
-            };
-          }
+    if (!symbolCode) continue;
 
-          dailyBuckets[date].total++;
-
-          if (SUNNY_SYMBOLS.has(symbolCode)) {
-            dailyBuckets[date].sunny++;
-          } else if (PARTLY_SUNNY_SYMBOLS.has(symbolCode)) {
-            dailyBuckets[date].partly++;
-          }
-        }
-
-        const result = {};
-
-        for (const [date, stats] of Object.entries(dailyBuckets)) {
-          const { total, sunny, partly } = stats;
-          if (total === 0) continue;
-
-          const score = (sunny + partly * 0.6) / total;
-          const confidence = Math.round(score * 100);
-
-          let label = 'unlikely';
-          if (confidence >= 70) label = 'sunny';
-          else if (confidence >= 40) label = 'probably sunny';
-
-          result[date] = {
-            confidence,
-            label,
-            breakdown: stats
-          };
-        }
-
-        return result;
+    if (!dailyBuckets[date]) {
+      dailyBuckets[date] = {
+        total: 0,
+        sunny: 0,
+        partly: 0
       };
+    }
+
+    dailyBuckets[date].total++;
+
+    // Check symbol codes - both number and string formats
+    const numCode = parseInt(symbolCode);
+    if (!isNaN(numCode)) {
+      if (numCode <= 2) {
+        dailyBuckets[date].sunny++;
+      } else if (numCode <= 4) {
+        dailyBuckets[date].partly++;
+      }
+    } else {
+      if (SUNNY_SYMBOLS.has(symbolCode)) {
+        dailyBuckets[date].sunny++;
+      } else if (PARTLY_SUNNY_SYMBOLS.has(symbolCode)) {
+        dailyBuckets[date].partly++;
+      }
+    }
+  }
+
+  const result = {};
+
+  for (const [date, stats] of Object.entries(dailyBuckets)) {
+    const { total, sunny, partly } = stats;
+    if (total === 0) continue;
+
+    const score = (sunny + partly * 0.6) / total;
+    const confidence = Math.round(score * 100);
+
+    let label = 'unlikely';
+    if (confidence >= 70) label = 'sunny';
+    else if (confidence >= 40) label = 'probably sunny';
+
+    result[date] = {
+      confidence,
+      label,
+      breakdown: stats
+    };
+  }
+
+  return result;
+};
 
       const calculateDistance = (lat1, lon1, lat2, lon2) => {
         const R = 6371;
