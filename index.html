@@ -162,26 +162,37 @@
         }));
       };
 
- const fetchWeatherForLocation = async (location) => {
+const fetchWeatherForLocation = async (location) => {
   const cached = getCachedForecast(location);
-  if (cached) return cached;
+  if (cached) {
+    console.log(`Using cached data for ${location.name}`);
+    return cached;
+  }
 
   try {
     const url = `/api/met?lat=${location.lat}&lon=${location.lon}`;
-    console.log(`Fetching weather for ${location.name}`);
+    console.log(`Fetching: ${url}`);
     
     const response = await fetch(url);
     
+    console.log(`Response status for ${location.name}: ${response.status}`);
+    console.log(`Response ok: ${response.ok}`);
+    console.log(`Response headers:`, [...response.headers.entries()]);
+    
     if (!response.ok) {
+      const errorText = await response.text();
       console.error(`HTTP ${response.status} for ${location.name}`);
+      console.error(`Error body:`, errorText);
       return null;
     }
 
     const xmlText = await response.text();
+    console.log(`XML length for ${location.name}: ${xmlText.length} characters`);
+    console.log(`XML preview:`, xmlText.substring(0, 200));
     
     // Validate we got XML
     if (!xmlText.includes('<?xml') && !xmlText.includes('<weatherdata')) {
-      console.error(`Invalid response for ${location.name}`);
+      console.error(`Invalid response for ${location.name} - not XML`);
       return null;
     }
 
@@ -196,17 +207,19 @@
 
     const forecast = parseMetEireannForecast(xmlDoc);
     if (forecast && Object.keys(forecast).length > 0) {
+      console.log(`Successfully parsed forecast for ${location.name}:`, forecast);
       cacheForecast(location, forecast);
       return forecast;
     }
     
+    console.log(`No forecast data returned for ${location.name}`);
     return null;
   } catch (error) {
     console.error(`Error fetching ${location.name}:`, error);
+    console.error(`Error stack:`, error.stack);
     return null;
   }
 };
-
 
 const parseMetEireannForecast = (xmlDoc) => {
   const times = Array.from(xmlDoc.querySelectorAll('time'));
