@@ -412,7 +412,7 @@ const parseMetEireannForecast = (xmlDoc) => {
           const location = IRISH_LOCATIONS[i];
           
           if (!getCachedForecast(location) && i > 0) {
-            await new Promise(resolve => setTimeout(resolve, 500));
+            await new Promise(resolve => setTimeout(resolve, 100));
           }
           
           const forecast = await fetchWeatherForLocation(location);
