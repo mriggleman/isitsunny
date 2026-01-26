@@ -261,11 +261,14 @@
         const cached = getCachedForecast(location);
         if (cached) return cached;
 
-        // Try direct connection first, fallback to CORS proxy
-        const urls = [
-          `https://openaccess.pf.api.met.ie/metno-wdb2ts/locationforecast?lat=${location.lat};long=${location.lon}`,
-          `https://cors-anywhere.herokuapp.com/https://openaccess.pf.api.met.ie/metno-wdb2ts/locationforecast?lat=${location.lat};long=${location.lon}`
-        ];
+       
+      const url = `/api/met?lat=${location.lat}&lon=${location.lon}`;
+
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Proxy fetch failed');
+
+      const xmlText = await response.text();
+
 
         for (const url of urls) {
           try {
