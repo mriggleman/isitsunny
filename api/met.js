@@ -2,9 +2,6 @@ export const config = {
   runtime: 'edge'
 };
 
-// Simple in-memory cache for Edge runtime
-const cache = new Map();
-
 export default async function handler(req) {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -28,28 +25,12 @@ export default async function handler(req) {
     });
   }
 
-  // Create cache key
-  const cacheKey = `${lat}_${lon}`;
-  const now = Date.now();
-  const CACHE_DURATION = 3 * 60 * 60 * 1000; // 3 hours in milliseconds
-
-  // Check cache
-  const cached = cache.get(cacheKey);
-  if (cached && (now - cached.timestamp) < CACHE_DURATION) {
-    console.log(`Cache hit for ${lat},${lon}`);
-    return new Response(cached.data, {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/xml',
-        'Access-Control-Allow-Origin': '*',
-        'Cache-Control': 'public, s-maxage=10800, stale-while-revalidate=3600',
-        'X-Cache': 'HIT'
-      }
-    });
-  }
+  // Round coordinates to 2 decimal places for better cache hit rates
+  const roundedLat = Math.round(parseFloat(lat) * 100) / 100;
+  const roundedLon = Math.round(parseFloat(lon) * 100) / 100;
 
   // Met Éireann API requires 'long' parameter (not 'lon') and uses semicolon separator
-  const url = `http://openaccess.pf.api.met.ie/metno-wdb2ts/locationforecast?lat=${lat};long=${lon}`;
+  const url = `http://openaccess.pf.api.met.ie/metno-wdb2ts/locationforecast?lat=${roundedLat};long=${roundedLon}`;
 
   try {
     console.log(`Fetching from Met Éireann: ${url}`);
@@ -59,25 +40,16 @@ export default async function handler(req) {
         'User-Agent': 'Mozilla/5.0 (compatible; IsSunnyInIreland/1.0)',
         'Accept': 'application/xml, text/xml, */*',
       },
-      signal: AbortSignal.timeout(15000)
+      signal: AbortSignal.timeout(15000),
+      // Tell Vercel to cache this fetch request
+      cf: {
+        cacheTtl: 10800, // 3 hours
+        cacheEverything: true
+      }
     });
 
     if (!response.ok) {
       console.error(`HTTP ${response.status} from Met Éireann API`);
-      
-      // If we have stale cache, return it on error
-      if (cached) {
-        console.log(`Returning stale cache for ${lat},${lon} due to API error`);
-        return new Response(cached.data, {
-          status: 200,
-          headers: {
-            'Content-Type': 'application/xml',
-            'Access-Control-Allow-Origin': '*',
-            'X-Cache': 'STALE'
-          }
-        });
-      }
-      
       return new Response(
         JSON.stringify({ 
           error: 'Failed to fetch Met Éireann data',
@@ -113,47 +85,20 @@ export default async function handler(req) {
       );
     }
 
-    // Store in cache
-    cache.set(cacheKey, {
-      timestamp: now,
-      data: xml
-    });
-
-    // Clean up old cache entries (simple cleanup)
-    if (cache.size > 200) {
-      const entries = Array.from(cache.entries());
-      entries.sort((a, b) => a[1].timestamp - b[1].timestamp);
-      // Remove oldest 50 entries
-      for (let i = 0; i < 50; i++) {
-        cache.delete(entries[i][0]);
-      }
-    }
-
     return new Response(xml, {
       status: 200,
       headers: {
         'Content-Type': 'application/xml',
         'Access-Control-Allow-Origin': '*',
-        'Cache-Control': 'public, s-maxage=10800, stale-while-revalidate=3600',
-        'X-Cache': 'MISS'
+        // Aggressive caching: 3 hours, plus serve stale for 1 day if API is down
+        'Cache-Control': 'public, s-maxage=10800, stale-while-revalidate=86400, stale-if-error=86400',
+        // Help Vercel identify this as cacheable
+        'CDN-Cache-Control': 'public, s-maxage=10800',
       }
     });
 
   } catch (err) {
     console.error(`Error fetching from Met Éireann:`, err.message);
-    
-    // Return stale cache on error if available
-    if (cached) {
-      console.log(`Returning stale cache for ${lat},${lon} due to fetch error`);
-      return new Response(cached.data, {
-        status: 200,
-        headers: {
-          'Content-Type': 'application/xml',
-          'Access-Control-Allow-Origin': '*',
-          'X-Cache': 'STALE'
-        }
-      });
-    }
     
     return new Response(
       JSON.stringify({ 
