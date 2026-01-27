@@ -406,7 +406,6 @@ const parseMetEireannForecast = (xmlDoc) => {
         return R * c;
       };
 
-     // 3. Update checkSunnyLocations to use a lower threshold in winter mode:
 const checkSunnyLocations = async () => {
   if (!selectedDate || !userLocation) return;
 
@@ -421,35 +420,58 @@ const checkSunnyLocations = async () => {
   // Lower threshold in winter mode
   const confidenceThreshold = winterMode ? 25 : 40;
 
-  for (let i = 0; i < IRISH_LOCATIONS.length; i++) {
-    const location = IRISH_LOCATIONS[i];
-    
-    if (!getCachedForecast(location) && i > 0) {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    }
-    
-    const forecast = await fetchWeatherForLocation(location);
-    
-    if (forecast) {
-      successCount++;
-      const day = forecast[dateStr];
+  // Sort locations by distance first - only check closest 40
+  const sortedLocations = [...IRISH_LOCATIONS]
+    .map(loc => ({
+      ...loc,
+      distance: calculateDistance(userLocation.lat, userLocation.lon, loc.lat, loc.lon)
+    }))
+    .sort((a, b) => a.distance - b.distance)
+    .slice(0, 40); // Only check 40 closest locations
 
-      if (day && day.confidence >= confidenceThreshold) {
-        const distance = calculateDistance(
-          userLocation.lat,
-          userLocation.lon,
-          location.lat,
-          location.lon
-        );
+  console.log(`Checking ${sortedLocations.length} closest locations`);
 
-        sunny.push({
-          ...location,
-          distance: Math.round(distance),
-          confidence: day.confidence,
-          label: day.label
-        });
+  // Process in batches of 10 for parallel requests
+  const batchSize = 10;
+  for (let i = 0; i < sortedLocations.length; i += batchSize) {
+    const batch = sortedLocations.slice(i, i + batchSize);
+    
+    // Fetch all locations in this batch in parallel
+    const batchPromises = batch.map(location => 
+      fetchWeatherForLocation(location)
+        .then(forecast => ({ location, forecast }))
+        .catch(err => {
+          console.error(`Failed to fetch ${location.name}:`, err);
+          return { location, forecast: null };
+        })
+    );
+
+    const batchResults = await Promise.all(batchPromises);
+
+    // Process results
+    for (const { location, forecast } of batchResults) {
+      if (forecast) {
+        successCount++;
+        const day = forecast[dateStr];
+
+        if (day && day.confidence >= confidenceThreshold) {
+          sunny.push({
+            ...location,
+            distance: Math.round(location.distance),
+            confidence: day.confidence,
+            label: day.label
+          });
+        }
       }
     }
+
+    // Small delay between batches to avoid overwhelming the API
+    if (i + batchSize < sortedLocations.length) {
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+
+    // Show progress
+    console.log(`Progress: ${Math.min(i + batchSize, sortedLocations.length)}/${sortedLocations.length} checked, ${sunny.length} sunny found`);
   }
 
   if (successCount === 0) {
