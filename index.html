@@ -185,12 +185,6 @@
       WEATHER_WARNINGS: false
     };
 
-    // Check if time is during daylight hours (6am-9pm)
-    const isDaytime = (timeStr) => {
-      const hour = new Date(timeStr).getHours();
-      return hour >= 6 && hour <= 21;
-    };
-
     function IsSunnyInIreland() {
       const [selectedDate, setSelectedDate] = useState(null);
       const [loading, setLoading] = useState(false);
@@ -201,6 +195,18 @@
       const [weatherCache, setWeatherCache] = useState({});
       const [error, setError] = useState(null);
       const [winterMode, setWinterMode] = useState(false);
+
+      const isDaytime = (timeStr) => {
+  const hour = new Date(timeStr).getHours();
+  
+  if (winterMode) {
+    // Winter mode: 8am to 6pm
+    return hour >= 8 && hour <= 18;
+  } else {
+    // Summer mode: 6am to 9pm
+    return hour >= 6 && hour <= 21;
+  }
+};
       
       useEffect(() => {
         if (navigator.geolocation) {
