@@ -433,12 +433,12 @@ const checkSunnyLocations = async () => {
       distance: calculateDistance(userLocation.lat, userLocation.lon, loc.lat, loc.lon)
     }))
     .sort((a, b) => a.distance - b.distance)
-    .slice(0, 40); // Only check 40 closest locations
+    .slice(0, 70); // Only check 40 closest locations
 
   console.log(`Checking ${sortedLocations.length} closest locations`);
 
   // Process in batches of 10 for parallel requests
-  const batchSize = 10;
+  const batchSize = 20;
   for (let i = 0; i < sortedLocations.length; i += batchSize) {
     const batch = sortedLocations.slice(i, i + batchSize);
     
