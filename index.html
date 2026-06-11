@@ -357,7 +357,7 @@ const parseMetEireannForecast = (xmlDoc) => {
     dailyBuckets[date].total++;
 
     // Check symbol codes - both number and string formats
- const numCode = parseInt(symbolCode);
+ const numCode = parseInt(symbolCode.replace(/[a-z]+$/i, ''));
     if (!isNaN(numCode)) {
       if (numCode <= 2) {
         dailyBuckets[date].sunny++;
