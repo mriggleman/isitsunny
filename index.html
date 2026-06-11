@@ -438,7 +438,7 @@ const checkSunnyLocations = async () => {
   console.log(`Checking ${sortedLocations.length} closest locations`);
 
   // Process in batches of 10 for parallel requests
-  const batchSize = 20;
+  const batchSize = 30;
   for (let i = 0; i < sortedLocations.length; i += batchSize) {
     const batch = sortedLocations.slice(i, i + batchSize);
     
