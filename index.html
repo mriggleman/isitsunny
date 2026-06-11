@@ -389,9 +389,9 @@ const parseMetEireannForecast = (xmlDoc) => {
     const confidence = Math.round(score * 100);
 
     let label = 'unlikely';
-    if (confidence >= 70) label = 'sunny';
-    else if (confidence >= 40) label = 'probably sunny';
-    else if (winterMode && confidence >= 25) label = 'mostly cloudy'; // New winter label
+    if (confidence >= 60) label = 'sunny';
+    else if (confidence >= 30) label = 'probably sunny';
+    else if (winterMode && confidence >= 15) label = 'mostly cloudy'; // New winter label
 
     result[date] = {
       confidence,
