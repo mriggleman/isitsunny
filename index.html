@@ -383,15 +383,16 @@ const parseMetEireannForecast = (xmlDoc) => {
     const { total, sunny, partly, cloudy } = stats;
     if (total === 0) continue;
 
-    // In winter mode, cloudy days count as partially sunny
-    const cloudyWeight = winterMode ? 0.3 : 0;
-    const score = (sunny + partly * 0.6 + cloudy * cloudyWeight) / total;
-    const confidence = Math.round(score * 100);
+ // In parseMetEireannForecast, replace the score/label block:
 
-    let label = 'unlikely';
-    if (confidence >= 60) label = 'sunny';
-    else if (confidence >= 30) label = 'probably sunny';
-    else if (winterMode && confidence >= 15) label = 'mostly cloudy'; // New winter label
+const cloudyWeight = winterMode ? 0.3 : 0.15; // was 0 in summer!
+const score = (sunny + partly * 0.7 + cloudy * cloudyWeight) / total;
+const confidence = Math.round(score * 100);
+
+let label = 'unlikely';
+if (confidence >= 50) label = 'sunny';
+else if (confidence >= 25) label = 'probably sunny';  // was 30
+else if (winterMode && confidence >= 15) label = 'mostly cloudy';
 
     result[date] = {
       confidence,
@@ -424,7 +425,7 @@ const checkSunnyLocations = async () => {
   let successCount = 0;
 
   // Lower threshold in winter mode
-  const confidenceThreshold = winterMode ? 25 : 40;
+  const confidenceThreshold = winterMode ? 20 : 25;
 
   // Sort locations by distance first - only check closest 40
   const sortedLocations = [...IRISH_LOCATIONS]
